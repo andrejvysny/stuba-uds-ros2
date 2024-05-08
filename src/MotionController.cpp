@@ -8,6 +8,7 @@ class MotionController {
 public:
     MotionController() {
         stop();
+        last_time_ = rclcpp::Clock().now();
         // Constructor implementation
     }
 
@@ -25,7 +26,18 @@ public:
         twist.angular.y = 0.0;
         twist.angular.z = angularZ;
 
+        totalDistance += calculateTraveledDistance(linearX, angularZ);
         return twist;
+    }
+
+    void setLinearSpeed(double speed)
+    {
+        linearX = speed;
+    }
+
+    void setAngularSpeed(double speed)
+    {
+        angularZ = speed;
     }
 
 
@@ -61,12 +73,41 @@ public:
         angularZ -= 0.1;
     }
 
+    double getTotalDistance()
+    {
+        return totalDistance;
+    }
+
 private:
 
     geometry_msgs::msg::Twist twist;
 
     double linearX = 0.0;
     double angularZ = 0.0;
+
+    rclcpp::Time last_time_;
+
+    double totalDistance = 0.0;
+
+    double calculateTraveledDistance(double linear_speed, double angular_speed) 
+    {
+        double current_time = rclcpp::Clock().now().seconds();
+        double time_difference = current_time - last_time_.seconds();
+        last_time_ = rclcpp::Clock().now();
+
+        double distance = linear_speed * time_difference;
+
+        // If angular_speed is zero, the motion is in a straight line
+        if (angular_speed == 0.0) {
+            return distance;
+        } else {
+            // For non-zero angular speed, calculate the arc length
+            double radius = linear_speed / angular_speed;
+            double arc_length = angular_speed * radius * time_difference;
+            return arc_length;
+        }
+    }
+
 };
 
 #endif // MOTIONCONTROLLER_H

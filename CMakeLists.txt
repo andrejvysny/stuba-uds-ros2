@@ -43,6 +43,9 @@ find_package(visualization_msgs REQUIRED)
 add_executable(main src/main)
 ament_target_dependencies(main rclcpp geometry_msgs std_msgs sensor_msgs nav_msgs visualization_msgs)
 
+add_executable(auto src/auto)
+ament_target_dependencies(auto rclcpp geometry_msgs std_msgs sensor_msgs nav_msgs visualization_msgs)
+
 
 add_executable(manual src/manual)
 ament_target_dependencies(manual rclcpp geometry_msgs std_msgs sensor_msgs nav_msgs visualization_msgs)
@@ -53,6 +56,7 @@ target_link_libraries(manual ncurses)
 install(TARGETS
 main
 manual
+auto
   DESTINATION lib/${PROJECT_NAME}
 )
 
