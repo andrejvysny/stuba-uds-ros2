@@ -134,14 +134,34 @@ private:
 
             if(
                 !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) 
-                && (
-                    isInSafeDistanceInRange(selectMiddlePointsInRange(right)) 
-                    || 
-                    isInSafeDistanceInRange(selectMiddlePointsInRange(left))
-                    )
+                && 
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(left)) 
+                &&  
+                isInSafeDistanceInRange(selectMiddlePointsInRange(right))
             ){
                 cmd.linear.x = speed_;
                 cmd.angular.z = 0.0;
+
+            }else if(
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) 
+                && 
+                isInSafeDistanceInRange(selectMiddlePointsInRange(left)) 
+                &&  
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(right))
+            ){
+                cmd.linear.x = speed_;
+                cmd.angular.z = 0.0;
+            }else if(
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) 
+                && 
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(left)) 
+                &&  
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(right))
+                &&
+                isInSafeDistanceInRange(selectMiddlePointsInRange(back))
+            ){
+                cmd.linear.x = 0.0;
+                cmd.angular.z = speed_;            
             }else{
                 cmd.linear.x = 0.0;
                 cmd.angular.z = speed_;
