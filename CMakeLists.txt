@@ -19,6 +19,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
@@ -32,24 +33,29 @@ endif()
 
 
 # find ROS2 dependencies
-find_package(rclcpp REQUIRED)
-find_package(ament_cmake REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
+
 add_executable(main src/main)
 ament_target_dependencies(main rclcpp geometry_msgs std_msgs sensor_msgs nav_msgs visualization_msgs)
-target_link_libraries(main ncurses)
+
+
+add_executable(manual src/manual)
+ament_target_dependencies(manual rclcpp geometry_msgs std_msgs sensor_msgs nav_msgs visualization_msgs)
+target_link_libraries(manual ncurses)
 
 
 # Specify where to install the ROS node executable
 install(TARGETS
 main
+manual
   DESTINATION lib/${PROJECT_NAME}
 )
+
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

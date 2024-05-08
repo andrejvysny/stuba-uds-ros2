@@ -1,79 +1,142 @@
-#include <geometry_msgs/msg/twist.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
-#include <visualization_msgs/msg/marker.hpp>
-#include <std_msgs/msg/int32.hpp>
-#include <std_msgs/msg/float64.hpp>
-#include <std_msgs/msg/string.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <rclcpp/qos.hpp>
-#include <sensor_msgs/msg/laser_scan.hpp>
-#include <nav_msgs/msg/odometry.hpp>
+#include "rclcpp/rclcpp.hpp"
+#include "MotionController.cpp"
+#include "std_msgs/msg/int32.hpp"
+#include "geometry_msgs/msg/twist.hpp"
 
-#include <iostream>
-#include <map>
-#include <chrono>
-#include <ncurses.h>
-#include <cmath>
-#include <random>
+using std::placeholders::_1;
+
+#include <string>
+
+#include <memory>
+
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+
+#include "MotionActions.hpp"
+
+static const int MODE_OFF = 0;
+static const int MODE_MANUAL = 1;
+static const int MODE_AUTO = 2;
+
+
+static const std::string MANUAL_CONTROLLER_TOPIC = std::string("/controller_manual");
+static const std::string AUTO_CONTROLLER_TOPIC = std::string("/controller_auto");
+
 
 
 class KobukiController : public rclcpp::Node
-{   
-
-//https://github.com/ros2/ros2_documentation/blob/foxy/source/Tutorials/Beginner-CLI-Tools/Understanding-ROS2-Topics/Understanding-ROS2-Topics.rst
+{
 
 public:
-    KobukiController() : Node("kobuki_control")
+    KobukiController() : Node("kobuki_controller"), count_(0)
     {
-        // Initialize publishers, subscribers, and other variables here
-    }
+        RCLCPP_INFO(this->get_logger(),"Started kobuki_controller");
 
-    MinimalPublisher() : Node("minimal_publisher"), count_(0)
-    {
-      publisher_ = this->create_publisher<std_msgs::msg::String>("topic", 10);
-      timer_ = this->create_wall_timer(
-      500ms, std::bind(&MinimalPublisher::timer_callback, this));
-    }
+        twist_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+        twist_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(100), 
+            std::bind(&KobukiController::publisher_callback, this)
+        );
+        RCLCPP_INFO(this->get_logger(),"Create timer and Publisher for /cmd_vel topic");
 
-    // Implement required methods here
+
+         manual_controller_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
+            MANUAL_CONTROLLER_TOPIC,
+            10, 
+            std::bind(&KobukiController::manual_controller_subscriber, this, _1)
+        );
+        RCLCPP_INFO(this->get_logger(),"Create subscriber for /controller_manual topic");
+
+        auto_controller_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
+            AUTO_CONTROLLER_TOPIC,
+            10, 
+            std::bind(&KobukiController::auto_controller_subscriber, this, _1)
+        );
+        RCLCPP_INFO(this->get_logger(),"Create subscriber for /controller_auto topic");
+
+    }
 
 private:
-    // Declare private member variables here
+    size_t count_;
+    rclcpp::TimerBase::SharedPtr twist_timer_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr twist_publisher_;
+    MotionController motionController;
+    int currentMode = MODE_MANUAL;
+
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr manual_controller_subscription_;
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr auto_controller_subscription_;
 
 
 
-    void KobukiController::publisher()
+    // ################################################################################################
+
+    void manual_controller_subscriber(const std_msgs::msg::Int32::SharedPtr msg)
     {
-        // Declare a publisher member variable in the class
-        rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
+      RCLCPP_INFO(this->get_logger(), "MANUAL I heard: '%d'", msg->data);
+        applyMotionAction(msg->data);
+    }
 
-        // Create the publisher in the constructor
-        publisher_ = this->create_publisher<std_msgs::msg::String>("/example", 10);
+    void auto_controller_subscriber(const std_msgs::msg::Int32::SharedPtr msg)
+    {
+      RCLCPP_INFO(this->get_logger(), "AUTO I heard: '%d'", msg->data);
+    }
 
-        // Publish a message
-        std_msgs::msg::String message;
-        message.data = "Hello, world!";
-        publisher_->publish(message);
+    // ################################################################################################
+    
+    
+    
+    void publisher_callback()
+    {
+        twist_publisher_->publish(motionController.getTwist());
+        RCLCPP_INFO(this->get_logger(), "Published data: %s", motionController.getTwistToJson().c_str()); 
+    }
 
 
-        void publisher()
-        {
-            // Declare a publisher member variable in the class
-            rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
-            // Create the publisher in the constructor
-            publisher_ = this->create_publisher<std_msgs::msg::String>("/example", 10);
-
-            // Create a timer with a period of 1 second
-            auto timer = this->create_wall_timer(std::chrono::seconds(1), [publisher_]() {
-                // Publish a message
-                std_msgs::msg::String message;
-                message.data = "Hello, world!";
-                publisher_->publish(message);
-            });
+    void modeCallback()
+    {
+        switch (currentMode){
+        case MODE_OFF:
+            shutdown();
+            break;
+        case MODE_MANUAL:
+            //manualController.run();
+            break;
+        case MODE_AUTO:
+            //enable_automatic_mode();
+            break;
         }
     }
 
 
+    void shutdown()
+    {
+        motionController.stop();
+    }
+
+
+    void applyMotionAction(int action)
+    {
+        switch (action)
+        {
+            case MotionActions::ACTION_INCREMENT_LINEAR_SPEED:
+                motionController.increseLinearSpeed();
+                break;
+            case MotionActions::ACTION_DECREMENT_LINEAR_SPEED:
+                motionController.decreaseLinearSpeed();
+                break;
+            case MotionActions::ACTION_INCREMENT_ANGULAR_SPEED:
+                motionController.increaseAngularSpeed();
+                break;
+            case MotionActions::ACTION_DECREMENT_ANGULAR_SPEED:
+                motionController.decreaseAngularSpeed();
+                break;
+            case MotionActions::ACTION_STOP:
+                motionController.stop();
+                break;
+            default:
+                // Handle unknown action
+                break;
+        }
+    }
 
 };
-

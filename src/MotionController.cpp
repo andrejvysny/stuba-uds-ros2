@@ -7,40 +7,70 @@
 class MotionController {
 public:
     MotionController() {
+        stop();
         // Constructor implementation
     }
 
     ~MotionController() {
+        stop();
         // Destructor implementation
     }
 
-    // Add other public methods and member variables as needed
+    geometry_msgs::msg::Twist getTwist()
+    {
+        twist.linear.x = linearX;
+        twist.linear.y = 0.0;
+        twist.linear.z = 0.0;
+        twist.angular.x = 0.0;
+        twist.angular.y = 0.0;
+        twist.angular.z = angularZ;
+
+        return twist;
+    }
+
+
+    std::string getTwistToJson() const
+    {
+        std::string result = "{ linear_x:" + std::to_string(twist.linear.x) + ", angular_z: " + std::to_string(twist.angular.z) + " }";
+        return result;
+    }
+
+    void stop()
+    {
+        twist.linear.x = 0.0;
+        twist.linear.y = 0.0;
+        twist.linear.z = 0.0;
+        twist.angular.x = 0.0;
+        twist.angular.y = 0.0;
+        twist.angular.z = 0.0;
+    }
+
+    void increseLinearSpeed()
+    {
+        linearX += 0.1;
+    }
+
+    void decreaseLinearSpeed()
+    {
+        linearX -= 0.1;
+    }
+
+    void increaseAngularSpeed()
+    {
+        angularZ += 0.1;
+    }
+
+    void decreaseAngularSpeed()
+    {
+        angularZ -= 0.1;
+    }
 
 private:
 
     geometry_msgs::msg::Twist twist;
 
-    // Define private helper methods here
-
-    // Declare private member functions for getting and updating twist variable
-    geometry_msgs::msg::Twist getTwist() const
-    {
-        return twist;
-    }
-
-    void setTwist(double linearX, double angularZ)
-    {
-            twist.linear.x = linearX;
-            twist.linear.y = 0.0;
-            twist.linear.z = 0.0;
-            twist.angular.x = 0.0;
-            twist.angular.y = 0.0;
-            twist.angular.z = angularZ;
-    }
-
-
-
-    // Add private methods and member variables as needed
+    double linearX = 0.0;
+    double angularZ = 0.0;
 };
 
 #endif // MOTIONCONTROLLER_H
