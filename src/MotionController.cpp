@@ -37,12 +37,8 @@ public:
 
     void stop()
     {
-        twist.linear.x = 0.0;
-        twist.linear.y = 0.0;
-        twist.linear.z = 0.0;
-        twist.angular.x = 0.0;
-        twist.angular.y = 0.0;
-        twist.angular.z = 0.0;
+        linearX = 0.0;
+        angularZ = 0.0;
     }
 
     void increseLinearSpeed()
