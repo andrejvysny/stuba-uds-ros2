@@ -2,7 +2,7 @@
 #include "MotionController.cpp"
 #include "std_msgs/msg/int32.hpp"
 #include "geometry_msgs/msg/twist.hpp"
-
+#include "std_msgs/msg/float64_multi_array.hpp"
 using std::placeholders::_1;
 
 #include <string>
@@ -41,11 +41,17 @@ public:
             std::bind(&KobukiController::manual_controller_subscriber, this, _1));
         RCLCPP_INFO(this->get_logger(), "Create subscriber for /controller_manual topic");
 
-        auto_controller_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
+        auto_controller_subscription_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
             AUTO_CONTROLLER_TOPIC,
             10,
             std::bind(&KobukiController::auto_controller_subscriber, this, _1));
         RCLCPP_INFO(this->get_logger(), "Create subscriber for /controller_auto topic");
+
+
+        mode_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
+            "/mode",
+            10,
+            std::bind(&KobukiController::modeCallback, this, _1));
     }
 
 private:
@@ -53,25 +59,33 @@ private:
     rclcpp::TimerBase::SharedPtr twist_timer_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr twist_publisher_;
     MotionController motionController;
-    int currentMode = MODE_MANUAL;
 
-    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr manual_controller_subscription_;
-    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr auto_controller_subscription_;
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mode_subscription_;
+    int currentMode = MODE_OFF;
 
     // ################################################################################################
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr manual_controller_subscription_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr auto_controller_subscription_;
 
     void manual_controller_subscriber(const std_msgs::msg::Int32::SharedPtr msg)
     {
-        RCLCPP_INFO(this->get_logger(), "MANUAL I heard: '%d'", msg->data);
-        applyMotionAction(msg->data);
+        if (MODE_MANUAL == currentMode)
+        {
+            applyManualMotionAction(msg->data);
+        }
     }
 
-    void auto_controller_subscriber(const std_msgs::msg::Int32::SharedPtr msg)
+    void auto_controller_subscriber(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
     {
-        RCLCPP_INFO(this->get_logger(), "AUTO I heard: '%d'", msg->data);
+        if (MODE_AUTO == currentMode)
+        {
+            motionController.setLinearSpeed(msg->data[0]);
+            motionController.setAngularSpeed(msg->data[1]);
+        }
     }
-
     // ################################################################################################
+
+
 
     void publisher_callback()
     {
@@ -79,28 +93,26 @@ private:
         RCLCPP_INFO(this->get_logger(), "Published data: %s", motionController.getTwistToJson().c_str());
     }
 
-    void modeCallback()
+    void modeCallback(const std_msgs::msg::Int32::SharedPtr msg)
     {
+        currentMode = msg->data;
+        
+
         switch (currentMode)
         {
         case MODE_OFF:
-            shutdown();
+            motionController.stop();
             break;
         case MODE_MANUAL:
-            // manualController.run();
+            RCLCPP_INFO(this->get_logger(), "Mode changed to: MANUAL");
             break;
         case MODE_AUTO:
-            // enable_automatic_mode();
+            RCLCPP_INFO(this->get_logger(), "Mode changed to: AUTO");
             break;
         }
     }
 
-    void shutdown()
-    {
-        motionController.stop();
-    }
-
-    void applyMotionAction(int action)
+    void applyManualMotionAction(int action)
     {
         switch (action)
         {

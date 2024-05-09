@@ -6,6 +6,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int32.hpp"
+#include "std_msgs/msg/float64_multi_array.hpp"
+
 
 static const std::string MANUAL_CONTROLLER_TOPIC = std::string("/controller_manual");
 static const std::string AUTO_CONTROLLER_TOPIC = std::string("/controller_auto");
@@ -16,27 +18,18 @@ public:
     AutoController() : Node("auto_controller")
     {
         RCLCPP_INFO(this->get_logger(), "Created AutoController");
-
-        publisher_ = this->create_publisher<std_msgs::msg::Int32>(AUTO_CONTROLLER_TOPIC, 10);
-        timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(50),
-            std::bind(&AutoController::timer_callback, this));
-
+        publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(AUTO_CONTROLLER_TOPIC, 10);
         lidar_subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/scan", 10, std::bind(&AutoController::scan_callback, this, std::placeholders::_1));
 
-
-        if (active == true){
-            command_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
-        }
+        //command_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     }
 
 private:
-    bool active = true;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr command_publisher_;
+    //rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr command_publisher_;
 
     rclcpp::TimerBase::SharedPtr timer_;
-    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr publisher_;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr publisher_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_subscription_;
 
     const float safeDistanceOuther = 0.7;
@@ -46,6 +39,9 @@ private:
     std::vector<float> front, back, left, right;
     std::vector<bool> leftTrace;
     std::vector<bool> rightTrace;
+
+    float linearX = 0.0;
+    float angularZ = 0.0;
 
     bool isInSafeDistance(const sensor_msgs::msg::LaserScan::SharedPtr msg, float safeDistance = 0.7)
     {
@@ -108,7 +104,10 @@ private:
         geometry_msgs::msg::Twist cmd;
         divide_scan(*msg);
         cmd = autoMode(msg);
-        if (active == true) command_publisher_->publish(cmd);
+        auto message = std_msgs::msg::Float64MultiArray();
+        message.data = {linearX, angularZ};
+        publisher_->publish(message);
+        //command_publisher_->publish(cmd);
     }
 
     float getAverage(const std::vector<float>& numbers)
@@ -170,9 +169,6 @@ private:
 
         if (isInSafeDistance(msg))
         {
-
-
-            
             
             // If there is an obstacle in front, rotate right
             if(isInSafeDistanceInRange(selectMiddlePointsInRange(front))){
@@ -262,6 +258,8 @@ private:
             cmd.angular.z = 0.0;
         }
 
+        linearX = cmd.linear.x;
+        angularZ = cmd.angular.z;
         return cmd;
     }
 
@@ -308,14 +306,7 @@ private:
         front.insert(front.end(), frontEnd.begin(), frontEnd.end());
     }
 
-    void timer_callback()
-    {
-        auto message = std_msgs::msg::Int32();
-        message.data = MotionActions::ACTION_NONE;
-        publisher_->publish(message);
-    }
-
-
+  
     float getLowestNumber(const std::vector<float>& numbers)
     {
         float lowestNumber = std::numeric_limits<float>::max();
