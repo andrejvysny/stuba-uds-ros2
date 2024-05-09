@@ -21,13 +21,9 @@ public:
         publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(AUTO_CONTROLLER_TOPIC, 10);
         lidar_subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/scan", 10, std::bind(&AutoController::scan_callback, this, std::placeholders::_1));
-
-        //command_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     }
 
 private:
-    //rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr command_publisher_;
-
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr publisher_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_subscription_;
@@ -42,6 +38,16 @@ private:
 
     float linearX = 0.0;
     float angularZ = 0.0;
+    
+    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
+    {
+        geometry_msgs::msg::Twist cmd;
+        divide_scan(*msg);
+        cmd = autoMode(msg);
+        auto message = std_msgs::msg::Float64MultiArray();
+        message.data = {linearX, angularZ};
+        publisher_->publish(message);
+    }
 
     bool isInSafeDistance(const sensor_msgs::msg::LaserScan::SharedPtr msg, float safeDistance = 0.7)
     {
@@ -97,17 +103,6 @@ private:
         }
 
         return selectedPoints;
-    }
-
-    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
-    {
-        geometry_msgs::msg::Twist cmd;
-        divide_scan(*msg);
-        cmd = autoMode(msg);
-        auto message = std_msgs::msg::Float64MultiArray();
-        message.data = {linearX, angularZ};
-        publisher_->publish(message);
-        //command_publisher_->publish(cmd);
     }
 
     float getAverage(const std::vector<float>& numbers)
@@ -279,22 +274,19 @@ private:
 
         for (int i = 0; i < num_measurements; ++i, angle += scan.angle_increment)
         {
-            // Normalize angle to be within [0, 2*pi]
             float norm_angle = fmod(angle + 2 * M_PI, 2 * M_PI);
 
-            // Front: -45 to +45 degrees around the x-axis
             if (norm_angle <= M_PI / 4)
                 frontStart.push_back(scan.ranges[i]);
             else if (norm_angle > 7 * M_PI / 4)
                 frontEnd.push_back(scan.ranges[i]);
 
-            // Right: 45 to 135 degrees
             else if (norm_angle > M_PI / 4 && norm_angle <= 3 * M_PI / 4)
                 left.push_back(scan.ranges[i]);
-            // Back: 135 to 225 degrees
+
             else if (norm_angle > 3 * M_PI / 4 && norm_angle <= 5 * M_PI / 4)
                 back.push_back(scan.ranges[i]);
-            // Left: 225 to 315 degrees
+        
             else if (norm_angle > 5 * M_PI / 4 && norm_angle <= 7 * M_PI / 4)
                 right.push_back(scan.ranges[i]);
         }
