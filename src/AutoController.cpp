@@ -84,7 +84,7 @@ private:
         return values.at(middleIndex);
     }
 
-    std::vector<float> selectMiddlePointsInRange(const std::vector<float> ranges, int rangePadding = 4)
+    std::vector<float> selectMiddlePointsInRange(const std::vector<float> ranges, int rangePadding = 5)
     {
         int middleIndex = ranges.size() / 2;
         if (ranges.size() % 2 == 0)
@@ -151,7 +151,7 @@ private:
 
     geometry_msgs::msg::Twist autoMode(const sensor_msgs::msg::LaserScan::SharedPtr msg)
     {
-        geometry_msgs::msg::Twist cmd;
+       /* geometry_msgs::msg::Twist cmd;
         divide_scan(*msg);
         logLastRanges(msg);
 
@@ -185,7 +185,7 @@ private:
                 cmd.angular.z = 0.0;
             }
 
-
+*/
             /*if (
                 !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) &&
                 !isInSafeDistanceInRange(selectMiddlePointsInRange(left)) &&
@@ -246,7 +246,7 @@ private:
                 cmd.linear.x = 0.0;
                 cmd.angular.z = speed_;
             }*/
-        }
+      /*  }
         else
         {
             cmd.linear.x = speed_;
@@ -255,6 +255,71 @@ private:
 
         linearX = cmd.linear.x;
         angularZ = cmd.angular.z;
+        return cmd;*/
+
+
+
+
+
+               geometry_msgs::msg::Twist cmd;
+
+        RCLCPP_INFO(this->get_logger(), "before devide scan");
+
+        divide_scan(*msg);
+
+        RCLCPP_INFO(this->get_logger(), "Front: %d, Back: %d, Left: %d, Right: %d;", front.size(), back.size(), left.size(), right.size());
+
+
+        RCLCPP_INFO(this->get_logger(), "after devide scan");
+
+
+        if (isInSafeDistance(msg)) {
+
+            RCLCPP_INFO(this->get_logger(), "IN SAVE DISTANCE IF");
+
+            if(
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) 
+                && 
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(left)) 
+                &&  
+                isInSafeDistanceInRange(selectMiddlePointsInRange(right))
+            ){
+                cmd.linear.x = speed_;
+                cmd.angular.z = 0.0;
+
+            }else if(
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) 
+                && 
+                isInSafeDistanceInRange(selectMiddlePointsInRange(left)) 
+                &&  
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(right))
+            ){
+                cmd.linear.x = speed_;
+                cmd.angular.z = 0.0;
+            }else if(
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) 
+                && 
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(left)) 
+                &&  
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(right))
+                &&
+                isInSafeDistanceInRange(selectMiddlePointsInRange(back))
+            ){
+                cmd.linear.x = 0.0;
+                cmd.angular.z = speed_;            
+            }else{
+                cmd.linear.x = 0.0;
+                cmd.angular.z = speed_;
+            }
+            
+        } else {
+            cmd.linear.x = speed_;
+            cmd.angular.z = 0.0;
+        }
+
+        linearX = cmd.linear.x;
+        angularZ = cmd.angular.z;
+
         return cmd;
     }
 
