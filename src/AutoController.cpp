@@ -10,164 +10,254 @@
 static const std::string MANUAL_CONTROLLER_TOPIC = std::string("/controller_manual");
 static const std::string AUTO_CONTROLLER_TOPIC = std::string("/controller_auto");
 
-
-class AutoController: public rclcpp::Node
+class AutoController : public rclcpp::Node
 {
 public:
-
     AutoController() : Node("auto_controller")
     {
-        RCLCPP_INFO(this->get_logger(),"Created AutoController");
-        
+        RCLCPP_INFO(this->get_logger(), "Created AutoController");
+
         publisher_ = this->create_publisher<std_msgs::msg::Int32>(AUTO_CONTROLLER_TOPIC, 10);
         timer_ = this->create_wall_timer(
             std::chrono::milliseconds(50),
-            std::bind(&AutoController::timer_callback, this)
-        );
-
+            std::bind(&AutoController::timer_callback, this));
 
         lidar_subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
             "/scan", 10, std::bind(&AutoController::scan_callback, this, std::placeholders::_1));
 
-        
-        command_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
 
+        if (active == true){
+            command_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+        }
     }
-
-
 
 private:
+    bool active = true;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr command_publisher_;
 
-    const float safeDistance = 0.5;
-    const float speed_ = 0.2;
+    rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr publisher_;
+    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_subscription_;
+
+    const float safeDistanceOuther = 0.7;
+    const float safeDistanceInner = 0.5;
+    const float speed_ = 0.4;
 
     std::vector<float> front, back, left, right;
+    std::vector<bool> leftTrace;
+    std::vector<bool> rightTrace;
 
-
-    bool isInSafeDistance(const sensor_msgs::msg::LaserScan::SharedPtr msg, float safeDistance = 0.45) {
-        for (float range : msg->ranges) {
-            if (range != 0.0 && range <= safeDistance) {
-                
-                RCLCPP_INFO(this->get_logger(), "TRUE isInSafeDistance: %f", range);
+    bool isInSafeDistance(const sensor_msgs::msg::LaserScan::SharedPtr msg, float safeDistance = 0.7)
+    {
+        for (float range : msg->ranges)
+        {
+            if (range != 0.0 && range <= safeDistance)
+            {
                 return true;
             }
-            RCLCPP_INFO(this->get_logger(), "\tFALSE isInSafeDistance: %f", range);
-
         }
         return false;
     }
 
-    bool isInSafeDistanceInRange(std::vector<float> ranges) {
-        for (float range : ranges) {
-            if (range != 0.0 && range <= safeDistance) {
-                RCLCPP_INFO(this->get_logger(), "TRUE isInSafeDistanceInRange: %f", range);
+    bool isInSafeDistanceInRange(std::vector<float> ranges)
+    {
+        for (float range : ranges)
+        {
+            if (range != 0.0 && range <= safeDistanceInner)
+            {
                 return true;
             }
-            RCLCPP_INFO(this->get_logger(), "\tFALSE isInSafeDistanceInRange: %f", range);
         }
         return false;
     }
 
-
-    float getMiddleValue(const std::vector<float>& values) {
-        if (values.empty()) {
+    float getMiddleValue(const std::vector<float> &values)
+    {
+        if (values.empty())
+        {
             throw std::runtime_error("Vector is empty");
         }
         int middleIndex = values.size() / 2;
-        RCLCPP_INFO(this->get_logger(), "getMiddleValue");
 
         return values.at(middleIndex);
     }
 
-    std::vector<float> selectMiddlePointsInRange(const std::vector<float> ranges) {
+    std::vector<float> selectMiddlePointsInRange(const std::vector<float> ranges, int rangePadding = 4)
+    {
         int middleIndex = ranges.size() / 2;
-        if (ranges.size() % 2 == 0) {
+        if (ranges.size() % 2 == 0)
+        {
             // Even number of elements, select the first of the two middle indices
             middleIndex--;
         }
 
-        int startIndex = middleIndex - 5;
-        int endIndex = middleIndex + 5;
-
-        RCLCPP_INFO(this->get_logger(), "MIDDLE INDEX: %d", middleIndex);
-
+        int startIndex = middleIndex - rangePadding;
+        int endIndex = middleIndex + rangePadding;
         std::vector<float> selectedPoints;
-        
-        RCLCPP_INFO(this->get_logger(), "selectMiddlePointsInRange before for");
 
-        for (int i = startIndex; i <= endIndex; i++) {
+        for (int i = startIndex; i <= endIndex; i++)
+        {
             selectedPoints.push_back(ranges.at(i));
         }
-        RCLCPP_INFO(this->get_logger(), "selectMiddlePointsInRange after for");
 
         return selectedPoints;
     }
 
-
-    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
+    {
         geometry_msgs::msg::Twist cmd;
         divide_scan(*msg);
         cmd = autoMode(msg);
-        command_publisher_->publish(cmd);
+        if (active == true) command_publisher_->publish(cmd);
     }
 
+    float getAverage(const std::vector<float>& numbers)
+    {
+        if (numbers.empty())
+        {
+            throw std::runtime_error("Vector is empty");
+        }
+        float sum = 0.0;
+        for (float number : numbers)
+        {
+            sum += number;
+        }
+        return sum / numbers.size();
+    }
 
+    void logLastRanges(const sensor_msgs::msg::LaserScan::SharedPtr msg)
+    {
 
+        leftTrace.push_back(isInSafeDistanceInRange(selectMiddlePointsInRange(left)));
+        rightTrace.push_back(isInSafeDistanceInRange(selectMiddlePointsInRange(right)));
 
-    geometry_msgs::msg::Twist autoMode(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+        if (leftTrace.size() > 50)
+        {
+            leftTrace.erase(leftTrace.begin());
+        }
 
+        if (rightTrace.size() > 50)
+        {
+            rightTrace.erase(rightTrace.begin());
+        }
+    }
+
+    bool isMoreThan80PercentTrue(const std::vector<bool> &boolVector)
+    {
+        int trueCount = 0;
+        for (bool value : boolVector)
+        {
+            if (value)
+            {
+                trueCount++;
+            }
+        }
+        return trueCount > boolVector.size() * 0.6;
+    }
+
+    geometry_msgs::msg::Twist autoMode(const sensor_msgs::msg::LaserScan::SharedPtr msg)
+    {
         geometry_msgs::msg::Twist cmd;
-
-        RCLCPP_INFO(this->get_logger(), "before devide scan");
-
         divide_scan(*msg);
+        logLastRanges(msg);
 
-        RCLCPP_INFO(this->get_logger(), "Front: %d, Back: %d, Left: %d, Right: %d;", front.size(), back.size(), left.size(), right.size());
+        RCLCPP_INFO(this->get_logger(), "RIGHT: %d, LEFT: %d, FRONT: %d, BACK: %d, RIGHTTRACE: %d, LEFTTRACE: %d, LEFTSIZE: %d, RIGHTSIZE: %d", 
+        (int)isInSafeDistanceInRange(selectMiddlePointsInRange(right)), (int)isInSafeDistanceInRange(selectMiddlePointsInRange(left)), (int)isInSafeDistanceInRange(selectMiddlePointsInRange(front)), (int)isInSafeDistanceInRange(selectMiddlePointsInRange(back)),
+        (int)isMoreThan80PercentTrue(rightTrace), (int)isMoreThan80PercentTrue(leftTrace),
+        leftTrace.size(), rightTrace.size()
+        );
 
 
-        RCLCPP_INFO(this->get_logger(), "after devide scan");
+        if (isInSafeDistance(msg))
+        {
 
 
-        if (isInSafeDistance(msg)) {
-
-            RCLCPP_INFO(this->get_logger(), "IN SAVE DISTANCE IF");
-
-            if(
-                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) 
-                && 
-                !isInSafeDistanceInRange(selectMiddlePointsInRange(left)) 
-                &&  
-                isInSafeDistanceInRange(selectMiddlePointsInRange(right))
-            ){
-                cmd.linear.x = speed_;
-                cmd.angular.z = 0.0;
-
-            }else if(
-                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) 
-                && 
-                isInSafeDistanceInRange(selectMiddlePointsInRange(left)) 
-                &&  
-                !isInSafeDistanceInRange(selectMiddlePointsInRange(right))
-            ){
-                cmd.linear.x = speed_;
-                cmd.angular.z = 0.0;
-            }else if(
-                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) 
-                && 
-                !isInSafeDistanceInRange(selectMiddlePointsInRange(left)) 
-                &&  
-                !isInSafeDistanceInRange(selectMiddlePointsInRange(right))
-                &&
-                isInSafeDistanceInRange(selectMiddlePointsInRange(back))
-            ){
-                cmd.linear.x = 0.0;
-                cmd.angular.z = speed_;            
-            }else{
+            
+            
+            // If there is an obstacle in front, rotate right
+            if(isInSafeDistanceInRange(selectMiddlePointsInRange(front))){
                 cmd.linear.x = 0.0;
                 cmd.angular.z = speed_;
+            }else if(!isInSafeDistanceInRange(selectMiddlePointsInRange(front)) && isInSafeDistanceInRange(selectMiddlePointsInRange(right))){
+
+                    if (getAverage(selectMiddlePointsInRange(right,1)) < safeDistanceInner)
+                    {
+                        cmd.linear.x = speed_;
+                        cmd.angular.z = speed_/2;
+                    }else{
+                        cmd.linear.x = speed_;
+                        cmd.angular.z = -speed_/2;
+                    }
+                    RCLCPP_INFO(this->get_logger(), "WORKING FOLLOW RIGHT");
+            }else{
+                cmd.linear.x = speed_;
+                cmd.angular.z = 0.0;
             }
-            
-        } else {
+
+
+            /*if (
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) &&
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(left)) &&
+                isInSafeDistanceInRange(selectMiddlePointsInRange(right)))
+            {
+                
+                if (getLowestNumber(selectMiddlePointsInRange(right)) < safeDistanceBorder)
+                {
+                    cmd.linear.x = speed_;
+                    cmd.angular.z = 0.1;
+                }else{
+                    cmd.linear.x = speed_;
+                    cmd.angular.z = -0.1;
+                }
+
+                RCLCPP_INFO(this->get_logger(), "NO FRONT RIGHT");
+            }
+            else if (
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) &&
+                isInSafeDistanceInRange(selectMiddlePointsInRange(left)) &&
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(right)))
+            {
+                cmd.linear.x = speed_;
+                cmd.angular.z = 0.0;
+
+                if (getLowestNumber(selectMiddlePointsInRange(right)) < safeDistanceBorder)
+                {
+                    cmd.linear.x = speed_;
+                    cmd.angular.z = -0.1;
+                }else{
+                    cmd.linear.x = speed_;
+                    cmd.angular.z = 0.1;
+                }
+
+                RCLCPP_INFO(this->get_logger(), "NO FRONT LEFT");
+            }
+            else if (
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) && !isInSafeDistanceInRange(selectMiddlePointsInRange(right)) && !isInSafeDistanceInRange(selectMiddlePointsInRange(left)) &&
+                isMoreThan80PercentTrue(rightTrace) &&
+                !isMoreThan80PercentTrue(leftTrace))
+            {
+                cmd.linear.x = 0.0;
+                cmd.angular.z = -speed_; // Rotate right
+                RCLCPP_INFO(this->get_logger(), "ROTATE RIGHT");
+            }
+            else if (
+                !isInSafeDistanceInRange(selectMiddlePointsInRange(front)) && !isInSafeDistanceInRange(selectMiddlePointsInRange(right)) && !isInSafeDistanceInRange(selectMiddlePointsInRange(left)) &&
+                isMoreThan80PercentTrue(leftTrace) &&
+                !isMoreThan80PercentTrue(rightTrace))
+            {
+                cmd.linear.x = 0.0;
+                cmd.angular.z = speed_; // Rotate left
+                RCLCPP_INFO(this->get_logger(), "ROTATE LEFT");
+            }
+            else
+            {
+                RCLCPP_INFO(this->get_logger(), "FALLBACK ACTION");
+                cmd.linear.x = 0.0;
+                cmd.angular.z = speed_;
+            }*/
+        }
+        else
+        {
             cmd.linear.x = speed_;
             cmd.angular.z = 0.0;
         }
@@ -175,106 +265,48 @@ private:
         return cmd;
     }
 
-
-
-
-
-
-    int determineLowestRange()
+    void divide_scan(const sensor_msgs::msg::LaserScan &scan)
     {
-        float min_range = std::numeric_limits<float>::max();
-        int range = 0;
-
-        if (!front.empty())
-        {
-            for (float value : front)
-            {
-                if (value != 0.0 && value < min_range)
-                {
-                    min_range = value;
-                    range = 1; // Front
-                }
-            }
-        }
-
-        if (!back.empty())
-        {
-            for (float value : back)
-            {
-                if (value != 0.0 && value < min_range)
-                {
-                    min_range = value;
-                    range = 2; // Back
-                }
-            }
-        }
-
-        if (!left.empty())
-        {
-            for (float value : left)
-            {
-                if (value != 0.0 && value < min_range)
-                {
-                    min_range = value;
-                    range = 3; // Left
-                }
-            }
-        }
-
-        if (!right.empty())
-        {
-            for (float value : right)
-            {
-                if (value != 0.0 && value < min_range)
-                {
-                    min_range = value;
-                    range = 4; // Right
-                }
-            }
-        }
-
-        return range;
-    }
-
-    void divide_scan(const sensor_msgs::msg::LaserScan& scan) {
 
         int num_measurements = scan.ranges.size();
         float angle = scan.angle_min;
 
-          front.clear();
-            right.clear();
-            back.clear();   
-            left.clear();         
+        front.clear();
+        right.clear();
+        back.clear();
+        left.clear();
 
-        for (int i = 0; i < num_measurements; ++i, angle += scan.angle_increment) {
+        std::vector<float> frontStart;
+        std::vector<float> frontEnd;
+
+        for (int i = 0; i < num_measurements; ++i, angle += scan.angle_increment)
+        {
             // Normalize angle to be within [0, 2*pi]
             float norm_angle = fmod(angle + 2 * M_PI, 2 * M_PI);
-   
+
             // Front: -45 to +45 degrees around the x-axis
-            if (norm_angle <= M_PI / 4 || norm_angle > 7 * M_PI / 4)
-                front.push_back(scan.ranges[i]);
+            if (norm_angle <= M_PI / 4)
+                frontStart.push_back(scan.ranges[i]);
+            else if (norm_angle > 7 * M_PI / 4)
+                frontEnd.push_back(scan.ranges[i]);
+
             // Right: 45 to 135 degrees
             else if (norm_angle > M_PI / 4 && norm_angle <= 3 * M_PI / 4)
-                right.push_back(scan.ranges[i]);
+                left.push_back(scan.ranges[i]);
             // Back: 135 to 225 degrees
             else if (norm_angle > 3 * M_PI / 4 && norm_angle <= 5 * M_PI / 4)
                 back.push_back(scan.ranges[i]);
             // Left: 225 to 315 degrees
             else if (norm_angle > 5 * M_PI / 4 && norm_angle <= 7 * M_PI / 4)
-                left.push_back(scan.ranges[i]);
+                right.push_back(scan.ranges[i]);
         }
 
+        std::reverse(frontStart.begin(), frontStart.end());
+        std::reverse(frontEnd.begin(), frontEnd.end());
+
+        front.insert(front.end(), frontStart.begin(), frontStart.end());
+        front.insert(front.end(), frontEnd.begin(), frontEnd.end());
     }
-
-
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr command_publisher_;
-
-
-    rclcpp::TimerBase::SharedPtr timer_;
-    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr publisher_;
-    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_subscription_;
-
-
 
     void timer_callback()
     {
@@ -282,43 +314,18 @@ private:
         message.data = MotionActions::ACTION_NONE;
         publisher_->publish(message);
     }
- 
 
-  void lidarCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg) const
+
+    float getLowestNumber(const std::vector<float>& numbers)
     {
-        RCLCPP_INFO(this->get_logger(), "Received scan: range size=%lu", msg->ranges.size());
-        // Optionally, log some ranges
-        if (!msg->ranges.empty()) {
-            RCLCPP_INFO(this->get_logger(), "First range: %f, Last range: %f",
-                        msg->ranges.front(), msg->ranges.back());
-        }
-    }
-
-
-    void findClosestPoint(const sensor_msgs::msg::LaserScan::SharedPtr msg) const
-    {
-        float closestRange = std::numeric_limits<float>::max();
-        int closestIndex = -1;
-
-        for (int i = 0; i < msg->ranges.size(); i++)
+        float lowestNumber = std::numeric_limits<float>::max();
+        for (float number : numbers)
         {
-            if (msg->ranges[i] < closestRange)
+            if (number != 0.0 && number < lowestNumber)
             {
-                closestRange = msg->ranges[i];
-                closestIndex = i;
+                lowestNumber = number;
             }
         }
-
-        if (closestIndex != -1)
-        {
-            RCLCPP_INFO(this->get_logger(), "Closest point: index=%d, range=%f", closestIndex, closestRange);
-        }
-        else
-        {
-            RCLCPP_INFO(this->get_logger(), "No points found in LaserScan message");
-        }
+        return lowestNumber;
     }
-
-
-    
 };
