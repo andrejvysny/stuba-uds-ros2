@@ -29,8 +29,8 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_subscription_;
 
     const float safeDistanceOuther = 0.7;
-    const float safeDistanceInner = 0.5;
-    const float speed_ = 0.4;
+    const float safeDistanceInner = 0.7;
+    const float speed_ = 0.2;
 
     std::vector<float> front, back, left, right;
     std::vector<bool> leftTrace;
@@ -49,7 +49,7 @@ private:
         publisher_->publish(message);
     }
 
-    bool isInSafeDistance(const sensor_msgs::msg::LaserScan::SharedPtr msg, float safeDistance = 0.7)
+    bool isInSafeDistance(const sensor_msgs::msg::LaserScan::SharedPtr msg, float safeDistance = 0.8)
     {
         for (float range : msg->ranges)
         {
